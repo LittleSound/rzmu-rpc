@@ -1,5 +1,5 @@
 {
-  "name": "birpc",
+  "name": "@rzmu/rpc",
   "type": "module",
   "version": "0.2.17",
   "packageManager": "pnpm@8.15.3",

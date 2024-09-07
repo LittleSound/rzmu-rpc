@@ -29,11 +29,15 @@ export interface ChannelOptions {
   deserialize?: (data: any) => any
 }
 
+type Leaves<T> = T extends object ? { [K in keyof T]:
+  `${Exclude<K, symbol>}${Leaves<T[K]> extends never ? '' : `.${Leaves<T[K]>}`}`
+}[keyof T] : never
+
 export interface EventOptions<Remote> {
   /**
    * Names of remote functions that do not need response.
    */
-  eventNames?: (keyof Remote)[]
+  eventNames?: (Leaves<Remote>)[]
 
   /**
    * Maximum timeout for waiting for response, in milliseconds.
@@ -164,64 +168,26 @@ export function createBirpc<RemoteFunctions = Record<string, never>, LocalFuncti
 
   let _promise: Promise<any> | any
 
-  const rpc = new Proxy({}, {
-    get(_, method: string) {
-      if (method === '$functions')
-        return functions
+  const rpc = new Proxy({}, createProxyHandler()) as BirpcReturn<RemoteFunctions, LocalFunctions>
 
-      // catch if "createBirpc" is returned from async function
-      if (method === 'then' && !eventNames.includes('then' as any) && !('then' in functions))
-        return undefined
-
-      const sendEvent = (...args: any[]) => {
-        post(serialize(<Request>{ m: method, a: args, t: 'q' }))
-      }
-      if (eventNames.includes(method as any)) {
-        sendEvent.asEvent = sendEvent
-        return sendEvent
-      }
-      const sendCall = async (...args: any[]) => {
-        // Wait if `on` is promise
-        await _promise
-        return new Promise((resolve, reject) => {
-          const id = nanoid()
-          let timeoutId: ReturnType<typeof setTimeout> | undefined
-
-          if (timeout >= 0) {
-            timeoutId = setTimeout(() => {
-              try {
-                // Custom onTimeoutError handler can throw its own error too
-                options.onTimeoutError?.(method, args)
-                throw new Error(`[birpc] timeout on calling "${method}"`)
-              }
-              catch (e) {
-                reject(e)
-              }
-              rpcPromiseMap.delete(id)
-            }, timeout)
-
-            // For node.js, `unref` is not available in browser-like environments
-            if (typeof timeoutId === 'object')
-              timeoutId = timeoutId.unref?.()
-          }
-
-          rpcPromiseMap.set(id, { resolve, reject, timeoutId })
-          post(serialize(<Request>{ m: method, a: args, i: id, t: 'q' }))
-        })
-      }
-      sendCall.asEvent = sendEvent
-      return sendCall
-    },
-  }) as BirpcReturn<RemoteFunctions, LocalFunctions>
-
+  // eslint-disable-next-line prefer-const
   _promise = on(async (data, ...extra) => {
     const msg = deserialize(data) as RPCMessage
     if (msg.t === 'q') {
       const { m: method, a: args } = msg
       let result, error: any
-      const fn = resolver
-        ? resolver(method, (functions as any)[method])
-        : (functions as any)[method]
+
+      const methodParts = method.split('.')
+      let fn: any = functions
+      for (const part of methodParts) {
+        if (fn[part] === undefined) {
+          fn = undefined
+          break
+        }
+        fn = fn[part]
+      }
+      if (resolver)
+        fn = resolver(method, fn)
 
       if (!fn) {
         error = new Error(`[birpc] function "${method}" not found`)
@@ -257,6 +223,63 @@ export function createBirpc<RemoteFunctions = Record<string, never>, LocalFuncti
   })
 
   return rpc
+
+  function createProxyHandler(prefix = '') {
+    return {
+      get(_: unknown, method: string) {
+        if (method === '$functions')
+          return functions
+
+        // catch if "createBirpc" is returned from async function
+        if (method === 'then' && !eventNames.includes('then' as any) && !('then' in functions))
+          return undefined
+
+        const path = prefix ? `${prefix}.${method}` : method
+
+        const sendEvent = (...args: any[]) => {
+          post(serialize(<Request>{ m: path, a: args, t: 'q' }))
+        }
+        if (eventNames.includes(path as any)) {
+          sendEvent.asEvent = sendEvent
+          return sendEvent
+        }
+        const sendCall = async (...args: any[]) => {
+          // Wait if `on` is promise
+          await _promise
+          return new Promise((resolve, reject) => {
+            const id = nanoid()
+            let timeoutId: ReturnType<typeof setTimeout> | undefined
+
+            if (timeout >= 0) {
+              timeoutId = setTimeout(() => {
+                try {
+                  // Custom onTimeoutError handler can throw its own error too
+                  options.onTimeoutError?.(path, args)
+                  throw new Error(`[birpc] timeout on calling "${path}"`)
+                }
+                catch (e) {
+                  reject(e)
+                }
+                rpcPromiseMap.delete(id)
+              }, timeout)
+
+              // For node.js, `unref` is not available in browser-like environments
+              if (typeof timeoutId === 'object')
+                timeoutId = timeoutId.unref?.()
+            }
+
+            rpcPromiseMap.set(id, { resolve, reject, timeoutId })
+            post(serialize(<Request>{ m: path, a: args, i: id, t: 'q' }))
+          })
+        }
+        sendCall.asEvent = sendEvent
+
+        Object.setPrototypeOf(sendCall, new Proxy({}, createProxyHandler(path)) as BirpcReturn<RemoteFunctions, LocalFunctions>)
+
+        return sendCall
+      },
+    }
+  }
 }
 
 const cacheMap = new WeakMap<any, any>()

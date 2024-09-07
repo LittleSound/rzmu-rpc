@@ -1,6 +1,9 @@
-# birpc
+# @rzmu/rpc
 
-[![NPM version](https://img.shields.io/npm/v/birpc?color=a1b858&label=)](https://www.npmjs.com/package/birpc)
+**Fork of [birpc](https://github.com/antfu/birpc). add object nesting support.**
+
+
+[![NPM version](https://img.shields.io/npm/v/%40rzmu%2Frpc?color=a1b858&label=)](https://www.npmjs.com/package/@rzmu/rpc)
 
 Message-based two-way remote procedure call. Useful for WebSockets and Workers communication.
 
