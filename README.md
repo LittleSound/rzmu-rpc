@@ -2,6 +2,7 @@
 
 **Fork of [birpc](https://github.com/antfu/birpc). add object nesting support.**
 
+the `@rzmu/rpc` use `Object.setPrototypeOf` [^1], this may be slower [^2], if you are not want with this, please use `birpc`.
 
 [![NPM version](https://img.shields.io/npm/v/%40rzmu%2Frpc?color=a1b858&label=)](https://www.npmjs.com/package/@rzmu/rpc)
 
@@ -164,3 +165,9 @@ Refer to [./test/group.test.ts](./test/group.test.ts) as an example.
 ## License
 
 [MIT](./LICENSE) License © 2021 [Anthony Fu](https://github.com/antfu)
+
+## References
+
+[^1]: [Object.setPrototypeOf()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/setPrototypeOf)
+
+[^2]: [Object.setPrototypeOf vs Object.create benchmark test](https://gist.github.com/calebmer/c74e2a7941044e5f28b8)
